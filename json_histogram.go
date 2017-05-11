@@ -29,8 +29,13 @@ func getValue(m map[string]interface{}, l string) (interface{}, bool) {
 }
 
 func main() {
+	/*	for _, arg := range os.Args {
+		fmt.Println(arg)
+	}*/
+
 	fieldPtr := flag.String("field", "", "Selected field")
 	filterPtr := flag.String("filter", "", "Filter of events")
+	countShownPtr := flag.Uint("nshown", 10, "Number of entries shown")
 	flag.Parse()
 	field := *fieldPtr
 	if field == "" {
@@ -38,6 +43,7 @@ func main() {
 	}
 
 	filter, err := parseFilter(*filterPtr)
+	countShown := *countShownPtr
 	if err != nil {
 		log.Fatal("Error in filter definition", err)
 	}
@@ -86,9 +92,10 @@ func main() {
 		histogramAr[i].value = k
 		i++
 	}
+
 	if len(histogramAr) > 0 {
 		sort.Sort(histogramAr)
-		for _, value := range histogramAr[0:min(len(histogramAr)-1, 9)] {
+		for _, value := range histogramAr[0:min(len(histogramAr), int(countShown))] {
 			fmt.Println(value.value, value.count)
 		}
 	}
@@ -126,17 +133,22 @@ func parseFilter(filterArg string) ([]filterT, error) {
 	filterElem := strings.Split(filterArg, ",")
 
 	for _, elem := range filterElem {
+		if elem == "" {
+			continue
+		}
 		eqpos := strings.IndexRune(elem, '=')
 		if eqpos == -1 {
 			return nil, fmt.Errorf("Predicate '%s' does not  contain = ", elem)
 		}
 		field := elem[0:eqpos]
 		valueSt := elem[eqpos+1 : len(elem)]
+		// fmt.Println(field, valueSt)
 		var value interface{}
 		err := json.Unmarshal([]byte(valueSt), &value)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid value '%s': '%s' ", valueSt, err)
 		}
+		//fmt.Println(field, value)
 		result = append(result, filterT{field, value})
 	}
 	return result, nil
