@@ -30,10 +30,16 @@ func getValue(m map[string]interface{}, l string) (interface{}, bool) {
 
 func main() {
 	fieldPtr := flag.String("field", "", "Selected field")
+	filterPtr := flag.String("filter", "", "Filter of events")
 	flag.Parse()
 	field := *fieldPtr
 	if field == "" {
 		log.Fatal("Missing field")
+	}
+
+	filter, err := parseFilter(*filterPtr)
+	if err != nil {
+		log.Fatal("Error in filter definition", err)
 	}
 
 	histogram := map[interface{}]uint{}
@@ -57,14 +63,17 @@ func main() {
 				} else if err != nil {
 					log.Println("Error parsing file", arg)
 				}
-				v, ok := getValue(m, field)
-				if ok {
-					var oldCount uint
-					if oldCount, ok = histogram[v]; !ok {
-						oldCount = 0
+				if matchFilter(m, filter) {
+					v, ok := getValue(m, field)
+					if ok {
+						var oldCount uint
+						if oldCount, ok = histogram[v]; !ok {
+							oldCount = 0
+						}
+						histogram[v] = oldCount + 1
 					}
-					histogram[v] = oldCount + 1
 				}
+
 			}
 
 		}
@@ -105,6 +114,49 @@ func (h histogramEntryArray) Swap(i, j int) {
 	var t = h[i]
 	h[i] = h[j]
 	h[j] = t
+}
+
+type filterT struct {
+	field string
+	value interface{}
+}
+
+func parseFilter(filterArg string) ([]filterT, error) {
+	var result []filterT
+	filterElem := strings.Split(filterArg, ",")
+
+	for _, elem := range filterElem {
+		eqpos := strings.IndexRune(elem, '=')
+		if eqpos == -1 {
+			return nil, fmt.Errorf("Predicate '%s' does not  contain = ", elem)
+		}
+		field := elem[0:eqpos]
+		valueSt := elem[eqpos+1 : len(elem)]
+		var value interface{}
+		err := json.Unmarshal([]byte(valueSt), &value)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid value '%s': '%s' ", valueSt, err)
+		}
+		result = append(result, filterT{field, value})
+	}
+	return result, nil
+}
+
+func matchFilter(m map[string]interface{}, filter []filterT) bool {
+	match := true
+	for _, filterE := range filter {
+		field := filterE.field
+		value, ok := getValue(m, field)
+		if !ok {
+			match = false
+			break
+		}
+		if value != filterE.value {
+			match = false
+			break
+		}
+	}
+	return match
 }
 
 func min(a, b int) int {
